@@ -1,0 +1,403 @@
+﻿
+@{
+    ViewBag.Title = "EventStrategy";
+    Layout = "~/Views/Shared/_LayoutForMESNoMenu.cshtml";
+}
+
+<style>
+
+    .k-link k-pager-nav {
+        position: relative;
+        /* 向右移动，例如20px，具体距离可调整 */
+        left: 20px;
+    }
+
+
+    div.k-calendar-view a.k-link {
+        font-size: 14px;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        font-family: "標楷體", sans-serif;
+        font-weight: bold;
+    }
+
+    .box {
+        margin-top: 0px;
+        margin-right: 10px;
+        margin-bottom: 0px;
+        margin-left: 10px;
+    }
+
+    .tall {
+        height: 1000px;
+    }
+
+    .k-chart {
+        width: 400px;
+        height: 400px;
+        float: left;
+    }
+
+    .k-grid th.k-header {
+        text-align: center;
+    }
+
+    .k-grid-content {
+        text-align: center;
+    }
+
+    .k-grid-footer {
+        text-align: center;
+    }
+
+    #grid > table {
+        table-layout: fixed;
+    }
+
+    .k-widget.k-multiselect {
+        width: 200px;
+        vertical-align: middle;
+        display: inline-block;
+    }
+
+    .k-link {
+        font-family: "標楷體", sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+    }
+
+    .btn {
+        font-family: "標楷體", sans-serif;
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    .form-group {
+        margin-bottom: 5px;
+    }
+
+    .my-div {
+        text-decoration: none;
+    }
+
+        .my-div:hover {
+            text-decoration: underline;
+        }
+</style>
+@*配合網格設置使表單元件與其對應之 label 元素做水平排列*@
+
+<div class="form-horizontal">
+    <div class="form-group">
+        @*按鈕區*@
+        <div class="col-sm-12">
+            <div class="form-row">
+                <button class="btn btn_primary" id="readGrid" onclick="readGrid()">
+                    @*搜索圖標*@
+                    <i class="fa fa-search"></i>
+                    <span data-i18n="EventStatus.Query">查詢</span>
+                </button>
+
+                <div class="box box-warning box-solid" style="border-color:black;">
+                    <div class="box-header with-border" id="FilterCondition">
+                        <span data-i18n="EventStatus.divInspType" class="box-title">篩選條件</span>
+                        <div class="box-tools pull-right">
+                            @*Bootstrap摺疊*@
+                            <button type="button" class="btn btn-box-tool" data-widget="collapse" onclick="setGrid(this)">
+                                <i class="fa fa-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="box-body" style="border-color:black; border-width:2px;">
+
+                        <div class="col-2">
+                            <label for="txtItemName" style="float:left; font-size:14px; font-weight:bold;">
+                                <span data-i18n="EventStatus.ItemName_Search">關鍵字查詢</span>：
+                                <input type="text" class="k-textbox" id="txtItemName" onkeypress="triggerSearch(event)" />&emsp;
+                            </label>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="form-group">
+        <div class="col-sm-12">
+            <div id="grid"></div>
+        </div>
+    </div>
+</div>
+@*彈出式編輯器範本：用於在彈出視窗編輯時使用，提供事件狀態和順序的欄位編輯框。*@
+<script id="popup-editor-template" type="text/x-kendo-template">
+    <div class="k-edit-label">
+        <label for="ItemIndex">順序</label>
+    </div>
+    <div class="k-edit-field">
+        <input id="numeric-box" name="ItemIndex" required />
+    </div>
+
+    <div class="k-edit-label">
+        <label for="ItemName">事件對策</label>
+    </div>
+    <div class="k-edit-field">
+        <input type="text" class="k-input k-textbox" name="ItemName" required />
+    </div>
+</script>
+<script>
+    const sPageName = "EventStrategy";
+    var dataSource;
+    var crudServiceBaseUrl = "../api/IPMCommApi";
+    var grid;
+    var remoteDataSource;
+    var oDataModels_Edit = {};
+    var col = [];
+    var oi18nLanguAuto;
+
+    $(document).ready(function () {
+        QueryString.Initial();
+
+        InitialData(); // 確保資料來源首先被配置
+        InitialGrid(); // 在資料來源配置後初始化網格
+        readGrid();
+    });
+
+    // 用於彈跳視窗的 ItemIndex 編輯器
+    function itemIndexEditor(container, options) {
+        debugger;
+        // 獲取當前的最大 ItemIndex，如果沒有數據 預設為0
+        let maxIndex = Math.max.apply(Math, grid.dataSource.data().map(item => parseInt(item.ItemIndex))) || 0;
+
+        // 設置新的自動遞增索引
+        let newIndex = maxIndex + 1;
+
+        // 創建 Kendo Numeric Textbox 並賦值
+        $('<input required name="' + options.field + '"/>')
+            .appendTo(container)
+            .kendoNumericTextBox({
+                value: newIndex,  // 設置為新的自增值
+                format: "n0",     // 格式化為整數
+                min: 1            // 索引最小值設置為1
+            });
+    }
+
+
+
+    function InitialGrid() {
+        grid = $("#grid").kendoGrid({
+            dataSource: remoteDataSource,
+            resizable: true,
+            pageable: {
+                refresh: true, //啟用刷新按鈕
+                buttonCount: 5 // 分頁按鈕顯示的數量
+            },
+            sortable: true,
+            filterable: true,
+            height: 600,
+            editable: {
+                mode: "popup",
+                template: $("#popup-editor-template").html()
+            },
+            scrollable: {
+                virtual: true
+            },
+
+            edit: function (e) {
+                // 取得彈出視窗容器
+                var container = e.container;
+
+                // 透過容器取得目前編輯的模型對象
+                var model = e.model;
+
+                // 查找最大索引值
+                var maxIndex = Math.max.apply(Math, grid.dataSource.data().map(item => parseInt(item.ItemIndex))) || 0;
+
+                // 設定預設的自增值
+                var newIndex = model.isNew() ? maxIndex + 1 : model.ItemIndex;
+
+                // 初始化 kendoNumericTextBox
+                container.find("#numeric-box").kendoNumericTextBox({
+                    value: newIndex,
+                    format: "n0",
+                    min: 1 // 設定最小值為1
+                });
+
+                // 隐藏 `ModifyDate` 和 `ModifyUser` 字段的编辑框
+                container.find("input[name='ModifyDate']").closest(".k-edit-label").hide();
+                container.find("input[name='ModifyDate']").closest(".k-edit-field").hide();
+                container.find("input[name='ModifyUser']").closest(".k-edit-label").hide();
+                container.find("input[name='ModifyUser']").closest(".k-edit-field").hide();
+            },
+            toolbar: ["create"],
+
+            columns: [
+                {
+                    command: [
+                        {
+                            name: "edit",
+                            template: "<a class='crud crud_edit k-grid-edit'><i class='fa fa-pencil'></i></a>&nbsp",
+                            text: { cancel: i18n.t("ButtonCommon.Cancel"), update: i18n.t("ButtonCommon.Save") }
+                        },
+                        {
+                            name: "destroy", template: "<a class='crud crud_delete k-grid-delete'><i class='fa fa-trash'></i></a>&nbsp"
+                        }
+                    ], title: i18n.t(sPageName + ".command"), width: "100px", headerAttributes: { style: "text-align: center" }
+                },
+               /* { field: "SysID", title: i18n.t(sPageName + ".SysID"), width: "80px", filterable: false,  hidden: true },*/
+                { field: "ItemIndex", title: i18n.t(sPageName + ".ItemIndex"), width: "80px", filterable: false, editor: itemIndexEditor  },
+                { field: "ItemName", title: i18n.t(sPageName + ".ItemName"), width: "80px", filterable: false },
+                { field: "ModifyDate", title: i18n.t(sPageName + ".ModifyDate"), width: "80px", filterable: false, format: "{0: yyyy/MM/dd HH:mm:ss}" },
+                { field: "ModifyUser", values: UserData, title: i18n.t(sPageName + ".ModifyUser"), width: "80px", filterable: false },
+
+            ],
+            save: function (e) {
+                // 獲取當前編輯的項目
+                var item = e.model;
+                item.set('ModifyDate', new Date());
+                const currentUser = '当下使用者';
+                item.set('ModifyUser', currentUser);
+                // 檢查必填欄位是否為空
+                if (!item.ItemIndex || !item.ItemName) {
+                    e.preventDefault(); // 阻止保存
+                    alert("Item Index 和 Item Name 是必填的。"); // 顯示錯誤訊息
+                    return;
+                }
+
+
+                // 檢查 ItemName 是否重複
+                var isItemNameDuplicate = remoteDataSource.data().some(function (dataItem) {
+                    return dataItem.ItemName === item.ItemName && dataItem.uid !== item.uid;
+                });
+
+
+                // 如果 ItemName 重複
+                if (isItemNameDuplicate) {
+                    e.preventDefault(); // 阻止保存
+                    alert("事件對策 已存在，請選擇不同的名稱。"); // 顯示提示
+                    return;
+                }
+
+                // 在保存完成後刷新grid
+                setTimeout(readGrid, 0);
+            }
+        }).data("kendoGrid");
+    }
+
+    function InitialData() {
+        remoteDataSource = new kendo.data.DataSource({
+            batch: true,
+            transport: {//下拉選單資料讀取
+
+                read: {
+                    url: crudServiceBaseUrl + "/GetEventStrategy",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                create: {
+                    url: crudServiceBaseUrl + "/CreateEventStrategy",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                update: {
+                    url: crudServiceBaseUrl + "/UpdateEventStrategy",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                destroy: {
+                    url: crudServiceBaseUrl + "/DeleteEventStrategy",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    debugger
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = "FTC";
+                    oDataModels_Edit["FactoryID"] = "IPM";
+
+                    if (operation === 'read') {
+                        oDataModels_Edit["ItemName"] = $("#txtItemName").val();
+
+                    }
+
+                    if (operation !== "read" && options.models) {
+                        oDataModels_Edit["SysID"] = options.models[0].SysID;
+                        oDataModels_Edit["ItemIndex"] = options.models[0].ItemIndex;
+                        oDataModels_Edit["ItemName"] = options.models[0].ItemName;
+                        oDataModels_Edit["ModifyUser"] = options.models[0].ModifyUser;
+                    }
+                    return oDataModels_Edit;
+                }
+            },
+            //每分頁幾筆資料
+            pageSize: 6,
+            batch: true,
+            schema: {
+                parse: function (data) {
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+
+                            return [];
+                        } else {
+                            return data[0];
+                        }
+                    }
+                },
+                model: {
+                    id: "SysID",
+                    fields: {
+                        SysID: { type: "string", editable: false },
+
+                        ItemIndex: { type: "string"},
+
+                        ItemName: {
+                            type: "string", validation: {
+                                required: true // 必填字段
+                            }
+                        },
+                        ModifyDate: {type: "date", editable: false},
+                        ModifyUser: { type: "string", editable: false},
+
+                    }
+                },
+                requestEnd: function (e) {
+                    //查詢結束
+                    if (e.type != "read") {
+                        remoteDataSource.read();
+                    }
+                }
+            },
+        });
+    }
+
+    @* --------------------------------------------------------------邏輯區 -------------------------------------------------------------- *@
+    // 在輸入框內按 Enter 時觸發 readGrid
+    function triggerSearch(event) {
+        if (event.key === "Enter") {
+            readGrid(); // Call the readGrid function to refresh the grid data
+        }
+    }
+
+    function readGrid() {
+            $("#grid").data("kendoGrid").dataSource.read(); // 重新整理數據
+            $("#grid").data("kendoGrid").dataSource.page(1); // 定位到第一頁
+        }
+
+    function gridEdit() {
+        grid.gridEdit();
+    }
+
+</script>
+

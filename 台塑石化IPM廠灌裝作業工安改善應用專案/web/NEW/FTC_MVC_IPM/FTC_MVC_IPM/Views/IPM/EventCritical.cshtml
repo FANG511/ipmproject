@@ -1,0 +1,392 @@
+﻿@{
+    ViewBag.Title = "EventCritical";
+    Layout = "~/Views/Shared/_LayoutForMESNoMenu.cshtml";
+}
+
+<style>
+    div.k-calendar-view a.k-link {
+        font-size: 14px;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        font-family: "標楷體", sans-serif;
+        font-weight: bold;
+    }
+
+    .box {
+        margin-top: 0px;
+        margin-right: 0px;
+        margin-bottom: 20px;
+        margin-left: 0px;
+    }
+
+    .tall {
+        height: 1000px;
+    }
+
+    .k-chart {
+        width: 400px;
+        height: 400px;
+        float: left;
+    }
+
+    .k-grid th.k-header {
+        text-align: center;
+    }
+
+    .k-grid-content {
+        text-align: center;
+    }
+
+    .k-grid-footer {
+        text-align: center;
+    }
+
+    #grid > table {
+        table-layout: fixed;
+    }
+
+    .k-widget.k-multiselect {
+        width: 200px;
+        vertical-align: middle;
+        display: inline-block;
+    }
+
+    .k-link {
+        font-family: "標楷體", sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+    }
+
+    .btn {
+        font-family: "標楷體", sans-serif;
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    .form-group {
+        margin-bottom: 5px;
+    }
+
+    .my-div {
+        text-decoration: none;
+    }
+
+    .my-div:hover {
+        text-decoration: underline;
+    }
+    /*解決sweetalert被popup出來的視窗遮住問題(back screen)*/
+    .swal-overlay {
+        z-index: 20001
+    }
+    /*解決sweetalert被popup出來的視窗遮住問題(對話框部分)*/
+    .swal-modal {
+        z-index: 20002
+    }
+    .fa {
+        width: 22px;
+    }
+</style>
+<div class="form-horizontal">
+    <div class="title"></div>
+    <div class="col-sm-12">
+        <br /> <br />
+    </div>
+    <!--Grid資料表-->
+    <div class="form-group">
+        <div class="col-sm-12">
+            <div id="grid" style="width: 100%; height: 500px;"></div>
+        </div>
+    </div>
+</div>
+    <script id="EventCriticalSetting" type="text/x-kendo-template">
+        <table class="table table-sm" style="width: 100%;">
+            <tr>
+               <td style="padding-left: 1em; vertical-align: middle; text-align: right;" nowrap="nowrap">
+                    <label for="EventCriticalItemIndex" data-i18n="EventCritical.Text.ItemIndex"></label>
+                </td>
+                <td style="padding-left: 1em;" nowrap="nowrap">
+                    <input type="text" class="k-textbox" name="EventCriticalItemIndex" id="EventCriticalItemIndex" style="width:15em;">
+                </td>
+            </tr>
+            <tr>
+                <td style="padding-left: 1em; vertical-align: middle; text-align: right;" nowrap="nowrap">
+                    <label for="EventCriticalItemName" data-i18n="EventCritical.Text.ItemName"></label>
+                </td>
+                <td style="padding-left: 1em;" nowrap="nowrap">
+                    <input type="text" class="k-textbox" name="EventCriticalItemName" id="EventCriticalItemName" style="width:15em;">
+                </td>
+            </tr>
+            <tr>
+                <td style="padding-left: 1em; vertical-align: middle; text-align: right;" nowrap="nowrap">
+                    <label for="EventCriticalItemValue" data-i18n="EventCritical.Text.ItemValue"></label>
+                </td>
+                <td style="padding-left: 1em;" nowrap="nowrap">
+                    <input type="text" class="k-textbox" name="EventCriticalItemValue" id="EventCriticalItemValue" style="width:15em;">
+                </td>
+            </tr>
+        </table>
+    </script>
+    <script>
+    const vi18n_Name = 'EventCritical.Text';
+    var oDataModels_Edit = {};
+    var grid;
+    //表格資料
+    var remoteDataSource;
+
+    $(document).ready(function () {
+        QueryString.Initial();
+        InitialData();  // 確保資料來源首先被配置
+        InitialGrid();  // 在資料來源配置後初始化表格
+    });
+
+@* --------------------------------------------------------------定義區 Kendo物件等-------------------------------------------------------------- *@
+
+    function InitialGrid() {
+        grid = $("#grid").kendoGrid({
+            dataSource: remoteDataSource,
+            pageable: {
+                refresh: true,
+                pageSize: 10,
+                buttonCount: 5//頁碼數量
+            },
+            sortable: true, // 排序column
+            height: 650 ,
+            scrollable: {
+                virtual: true
+            },
+            editable: {
+                mode: "popup",
+                template: kendo.template($("#EventCriticalSetting").html()),
+            },
+
+            toolbar: [{ name: "create" }],
+
+            columns: [
+                {
+                    command: [
+                        {
+                            name: "edit",
+                            template: "<a class='crud crud_edit k-grid-edit'><i class='fa fa-pencil'></i></a>&nbsp",
+                            text: { cancel: i18n.t("ButtonCommon.Cancel"), update: i18n.t("ButtonCommon.Save") },
+                            click: SetMainData
+                        },
+                        {
+                            name: "destroy",
+                            template: "<a class='crud crud_delete k-grid-delete'><i class='fa fa-trash'></i></a>",
+                            click: deleteItem
+                        }
+
+                    ],
+                    width: "60px",
+                },
+
+                { field: "ItemIndex", title: i18n.t(vi18n_Name + '.ItemIndex'), width: "80px" },
+                { field: "ItemName", title: i18n.t(vi18n_Name + '.ItemName'), width: "100px" },
+                { field: "ItemValue", title: i18n.t(vi18n_Name + '.ItemValue'), width: "80px" },
+                { field: "ModifyDate", title: i18n.t(vi18n_Name + '.ModifyDate'), width: "180px", format: "{0: yyyy/MM/dd HH:mm:ss}"},
+                { field: "ModifyUser", values: UserData, title: i18n.t(vi18n_Name + '.ModifyUser'), width: "100px" },
+            ],
+
+            edit: function (e) {
+                //定義編輯視窗標題
+                e.container.parent().find(".k-window-title").text((e.model.isNew() ? i18n.t(vi18n_Name + '.Add') : i18n.t(vi18n_Name + '.Edit')) );
+                $('body').i18n();//多國語系文字替換
+            },
+
+            save: function (e) {
+                if ($("#EventCriticalItemValue").val() == '') {
+                    FtcAlert("嚴重值不可為空");
+                    e.preventDefault();
+                }
+                if ($("#EventCriticalItemName").val() == '') {
+                    FtcAlert("嚴重度說明不可為空");
+                    e.preventDefault();
+                }
+                if ($("#EventCriticalItemIndex").val() == '') {
+                    FtcAlert("順序不可為空");
+                    e.preventDefault();
+                }
+
+
+
+
+            }
+
+        }).data("kendoGrid")
+
+    }
+    //初始化資料
+    function InitialData() {
+        remoteDataSource = new kendo.data.DataSource({
+            batch: true,
+            transport: {
+                create: {
+                    url: WebApiUrl_Comm + "/AddCommItemDetail",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                destroy: {
+                    url: WebApiUrl_Comm + "/DelCommItemDetail",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                update: {
+                    url: WebApiUrl_Comm + "/UpdateCommItemDetail",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                read: {
+                    url: WebApiUrl_Comm + "/GetCommItemDetail",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = CompanyID;
+                    oDataModels_Edit["FactoryID"] = FactoryID;
+
+                    if (operation == 'read') {
+                        oDataModels_Edit["sKeyword"] = $('#Keyword').val();
+                        oDataModels_Edit["sListName"] = "EventCritical";
+                    }
+                    else {
+                        options.models[0].ItemIndex = $("#EventCriticalItemIndex").val();
+                        options.models[0].ItemName = $("#EventCriticalItemName").val();
+                        options.models[0].ItemValue = $("#EventCriticalItemValue").val();
+                        options.models[0].ListName = "EventCritical";
+                        options.models[0].ItemMemo = "嚴重度";
+
+                        oDataModels_Edit["RULEs"] = options.models[0];
+
+                    }
+                    return oDataModels_Edit;
+                }
+            },
+
+            pageSize: 10,
+
+            schema: {
+                //API回傳的資料
+                parse: function (data) {
+
+                    if (data.length == 1) {
+                         //執行失敗
+                        if (data[0].ReturnCode != 0) {
+                            FtcAlert(data[0].ReturnMessage);
+                            return [];
+                        }
+                    }
+
+                    else {
+                        //執行成功
+                        if (data[1].ReturnCode != 0) {
+                             return [];
+                        } else {
+                             return data[0];
+                        }
+                    }
+                },
+                model: {
+                    //id屬性指定了數據模型中的一個字段，用於唯一標識每一條記錄
+                    //透過此id可辨識要刪除或更新的row
+                    id: "SysID",
+                    fields: {
+                        SysID: { validation: { required: true }, editable: false },
+                        ListName: { validation: { required: true }, editable: false },
+                        ItemIndex: { validation: { required: true } },
+                        ItemName: { validation: { required: true } },
+                        ItemValue: { validation: { required: true } },
+                        ItemMemo: { validation: { required: true } },
+                        TargetType: { validation: { required: true } },
+                        Target: { validation: { required: true } },
+                        ModifyDate: { type: "date",validation: { required: true }},
+                        ModifyUser: { validation: { required: true } }
+                    }
+                }
+            },
+
+             //資料請求完成後觸發
+            requestEnd: function (e) {
+                var response = e.response;
+                var type = e.type;
+
+                if (type != 'read') {
+                    remoteDataSource.read();
+                }
+
+            }
+        });
+    }
+
+@* --------------------------------------------------------------邏輯區-------------------------------------------------------------- *@
+    // Function called by the read command
+    function readGrid() {
+        $("#grid").data("kendoGrid").dataSource.read(); // 重新整理數據
+        $("#grid").data("kendoGrid").dataSource.page(1); // 定位到第一頁
+    }
+
+    //// 調整網格高度
+    //function setGrid(e) {
+    //    setTimeout(function () {
+    //        var currHeight = getHeight(document.getElementById('FilterCondition').parentElement);
+    //        $("#grid").data("kendoGrid").setOptions({ height: 740 - currHeight });
+    //    }, 500);
+    //}
+    function getHeight(element) {
+        // 先嘗試獲取元素自身的高度
+        var height = element.offsetHeight;
+
+        // 如果元素自身高度為0，則繼續向上尋找父元素的高度
+        if (height === 0) {
+            var parent = element.parentElement;
+            while (parent && parent.offsetHeight === 0) {
+                parent = parent.parentElement;
+            }
+            if (parent) {
+                height = parent.offsetHeight;
+            }
+        }
+        return height;
+    }
+
+
+    function deleteItem(e) {
+        e.preventDefault();
+        var dataItem = this.dataItem($(e.currentTarget).closest("tr"));
+        swal({
+            //title: "Are you sure?",
+            text: "【是否要刪除此筆資料?】",
+            icon: "warning",
+            buttons: true,
+            dangerMode: true,
+        })
+            .then((willDelete) => {
+                if (willDelete) {
+                    remoteDataSource.remove(dataItem); // Remove from the dataSource
+                    remoteDataSource.sync(); // Synchronize the dataSource
+                }
+            });
+    }
+
+    function SetMainData(e) {
+        var gridSelect_Data;
+        //編輯模式
+        //取得該列資料
+        if (e) {
+            gridSelect_Data = this.dataItem($(e.target).closest("tr"));
+        }
+        //顯示該列資料
+        if (gridSelect_Data) {
+            $("#EventCriticalItemIndex").val(gridSelect_Data.ItemIndex);
+            $("#EventCriticalItemName").val(gridSelect_Data.ItemName);
+            $("#EventCriticalItemValue").val(gridSelect_Data.ItemValue);
+        }
+    }
+    </script>

@@ -1,0 +1,461 @@
+﻿
+@{
+    ViewBag.Title = "WISEPattern";
+    Layout = "~/Views/Shared/_LayoutForMESNoMenu.cshtml";
+}
+
+
+<style>
+    div.k-calendar-view a.k-link {
+        font-size: 14px;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        font-family: "標楷體", sans-serif;
+        font-weight: bold;
+    }
+
+    .box {
+        margin-top: 0px;
+        margin-right: 10px;
+        margin-bottom: 0px;
+        margin-left: 10px;
+    }
+
+    .tall {
+        height: 1000px;
+    }
+
+    .k-chart {
+        width: 400px;
+        height: 400px;
+        float: left;
+    }
+
+    .k-grid th.k-header {
+        text-align: center;
+    }
+
+    .k-grid-content {
+        text-align: center;
+    }
+
+    .k-grid-footer {
+        text-align: center;
+    }
+
+    #grid > table {
+        table-layout: fixed;
+    }
+
+    .k-widget.k-multiselect {
+        width: 200px;
+        vertical-align: middle;
+        display: inline-block;
+    }
+
+    .k-link {
+        font-family: "標楷體", sans-serif;
+        font-size: 16px;
+        font-weight: bold;
+    }
+
+    .btn {
+        font-family: "標楷體", sans-serif;
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    .form-group {
+        margin-bottom: 5px;
+    }
+
+    .my-div {
+        text-decoration: none;
+    }
+
+    .my-div:hover {
+        text-decoration: underline;
+    }
+</style>
+<div class="form-horizontal">
+    <div class="title">
+
+    </div>
+    <div class="form-group">
+        <div class="col-sm-12">
+
+            <div class="box box-warning box-solid" style="border-color:black;">
+                <div class="box-header with-border" id="FilterCondition">
+
+                    <span class="box-title">篩選條件</span>
+                    <div class="box-tools pull-right">
+                        <button type="button" class="btn btn-box-tool" data-widget="collapse" onclick="setGrid(this)">
+                            <i class="k-icon k-i-minus"></i>
+                        </button>
+                    </div>
+
+                </div>
+                <div class="box-body" style="border-color:black; border-width:2px;">
+                    <div class="form-row">
+                        <button class="btn btn_primary" id="readGrid" onclick="readGrid()">
+                            <i class="k-icon k-i-search"></i>
+                            <span data-i18n="ButtonCommon.Query" style="float: left; font-size: 16px; font-weight: bolder;">查詢</span>
+                        </button>
+                        @*<button class="btn btn_secondary" id="exportGrid" onclick="uploadExcel()">
+                                <i class="fa fa-upload"></i>
+                                <span data-i18n="LimsAnlzSampleQuery_History.btn_importExcel" style="float: left; font-size: 16px; font-weight: bolder;">上傳更新</span>
+                            </button>*@
+                        @*<button class="btn btn_secondary" id="exportGrid" onclick="exportGrid()">
+                                <i class="fa fa-print"></i>
+                                <span data-i18n="LimsAnlzSampleQuery_History.btn_ReadGrid" style="float: left; font-size: 16px; font-weight: bolder;">匯出報表</span>
+                            </button>*@
+                        @*<span style="font-family: '標楷體', sans-serif; font-weight: bold; font-size: 24px;"></span>*@
+                    </div>
+                    <div class="form-row">
+                        <div class="col-sm-4">
+                            <label for="dpCreateTime" style="float:left; font-size:14px; font-weight:bold;">
+                                <span data-i18n="WISE.WISEPattern.StartAndFinishTime">日期</span> :
+                                <input name="dpCREDATStartTime" id="dpCREDATStartTime" />
+                                <span> ~ </span>
+                                <input name="dpCREDATFinishTime" id="dpCREDATFinishTime" />&emsp;
+                            </label>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+
+    <!--Grid資料表-->
+    <div class="form-group">
+        <div class="col-sm-12">
+            <div id="grid"></div>
+        </div>
+    </div>
+</div>
+<script>
+
+    const sPageName = "WISE.WISEPattern";
+    var oDataModels_Edit = {};
+    var grid;
+    //下拉選單資料
+    var ddlEqpId, ddlArea, ddlGridColAData;
+    //表格資料
+    var remoteDataSource;
+    var date = new Date();
+    date.setDate(date.getDate() - 1);
+    $(document).ready(function () {
+        QueryString.Initial();
+        InitialData();  // 確保資料來源首先被配置
+        InitialKendoElement();
+        InitialGrid();  // 在資料來源配置後初始化表格
+        readGrid();
+        window.addEventListener('resize', setGrid);
+
+    });
+
+@* --------------------------------------------------------------定義區 Kendo物件等-------------------------------------------------------------- *@
+    function InitialKendoElement() {
+        ddlEqpId = $("#ddlSample").kendoDropDownList({
+            dataSource: ddlEqpIdData,
+            dataTextField: "Sample",
+            dataValueField: "Sample",
+            optionLabel: i18n.t(sPageName + ".ddlSample_placeholder"),
+            change: readGrid
+        });
+        
+    }
+    function InitialGrid() {
+        grid = $("#grid").kendoGrid({
+            dataSource: remoteDataSource,
+            pageable: false,
+            sortable: true, //排序column
+            filterable: true,
+            height: 740 - getHeight(document.getElementById('FilterCondition').parentElement),
+            scrollable: {
+                virtual: true
+            },
+            editable: "popup",
+            toolbar: ["create"],
+            edit: function (e) {
+                //e.container.find("input[name='欄位名稱']").prop("disabled", true);
+                //用於辨別編輯模式
+                if (!e.model.isNew()) {
+
+                }
+            },
+            columns: [
+                {
+                    command: [
+                        {
+                            name: "edit",
+                            template: "<a class='crud crud_edit k-grid-edit'><i class='k-icon k-i-edit'></i></a>&nbsp",
+                            text: { cancel: i18n.t("ButtonCommon.Cancel"), update: i18n.t("ButtonCommon.Save") }
+                        },
+                        {
+                            name: "destroy", template: "<a class='k-grid-destroy crud crud_delete '><i class='k-icon k-i-delete'></i></a>&nbsp", click: deleteItem
+                        }
+                    ], title: i18n.t(sPageName + ".command"), width: "100px", headerAttributes: { style: "text-align: center" }
+                },//command
+                { field: "ColA", title: i18n.t(sPageName + ".ColA"), width: "120px", filterable: false, editor: ColAEditor, template: ColADisplay }
+            ]
+        }).data("kendoGrid");
+
+    }
+    //表格運算元下拉選單
+    function ColAEditor(container, options) {
+        $('<input required name="' + options.field + '" validationMessage="' + i18n.t(sPageName + ".requiredOperantId") + '"/>')
+            .appendTo(container)
+            .kendoDropDownList({
+                dataSource: ddlGridColAData,
+                dataTextField: "ITEMNAME",
+                dataValueField: "ITEMVALUE",
+                optionLabel: "------"
+            });
+    }
+    //初始化資料
+    function InitialData() {
+        remoteDataSource = new kendo.data.DataSource({
+            batch: true,
+            transport: {//下拉選單資料讀取
+                create: {
+                    url: WebApiUrl_Area + "/remote_Create",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                destroy: {
+                    url: WebApiUrl_Area + "/remote_Remove",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                update: {
+                    url: WebApiUrl_Area + "/remote_Update",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                read: {
+                    url: WebApiUrl_Area + "/remote_Get",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = CompanyID;
+                    oDataModels_Edit["FactoryID"] = FactoryID;
+
+                    if (operation === 'read') {
+                        oDataModels_Edit["Area"] = $("#ddlArea").data("kendoDropDownList").value();
+                    }
+                    else {
+
+                        oDataModels_Edit["L_remote"] = options.models;
+                    }
+                    return oDataModels_Edit;
+                }
+            },
+            schema: {
+                parse: function (data) {
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+
+                            return [];
+                        } else {
+
+                            return data[0];
+                        }
+                    }
+                },
+                model: {
+                    id: "EventId",
+                    fields: {
+                        ColA: { type: "string" }
+                    }
+                }
+            },
+            requestEnd: function (e) {
+                var response = e.response;
+                var type = e.type;
+
+                if (type != 'read') {
+                    if (response.length == 1) {
+                        FtcAlert(response[0].ReturnMessage);
+                    }
+                    else {
+                        FtcAlert(response[1].ReturnMessage);
+                    }
+                    remoteDataSource.read();
+                }
+
+            }
+        });
+        //機台資料
+        ddlSampleData = new kendo.data.DataSource({
+            batch: true,
+            transport: {//下拉選單資料讀取
+                read: {
+                    url: WebApiUrl_Area + "/SampleData",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = CompanyID;
+                    oDataModels_Edit["FactoryID"] = FactoryID;
+                    return oDataModels_Edit;
+                }
+            },
+            schema: {
+                parse: function (data) {
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+
+                            return [];
+                        } else {
+
+                            return data[0];
+                        }
+                    }
+                },
+                model: {
+                    fields: {
+                        Sample: { type: "string" }
+                    }
+                }
+            }
+        });
+        ddlSampleData.read();
+
+        //表格運算元下拉選單
+        ddlGridColAData = new kendo.data.DataSource({
+            batch: true,
+            transport: {//下拉選單資料讀取
+                read: {
+                    url: WebApiUrl_Area + "/OperantItemlist",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = CompanyID;
+                    oDataModels_Edit["FactoryID"] = FactoryID;
+
+                    if (operation === 'read') {
+
+                    }
+                    else {
+
+                    }
+                    return oDataModels_Edit;
+                }
+            },
+            schema: {
+                parse: function (data) {
+
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            FtcAlert(data[0].ReturnMessage);
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+                            return [];
+                        } else {
+                            let dataArray = new Array();
+                            let obj;
+                            //console.log(data[0])
+                            for (let key in data[0]) {
+                                obj = { ITEMNAME: data[0][key].ITEMNAME, ITEMVALUE: data[0][key].ITEMVALUE };
+                                //console.log(obj);
+                                dataArray.push(obj);
+                            }
+                            return dataArray;
+                        }
+                    }
+                }
+            }
+        });
+        ddlGridColAData.read();
+    }
+
+@* --------------------------------------------------------------邏輯區-------------------------------------------------------------- *@
+    // Function called by the read command
+    function readGrid() {
+        $("#grid").data("kendoGrid").dataSource.read(); // 重新整理數據
+        $("#grid").data("kendoGrid").dataSource.page(1); // 定位到第一頁
+    }
+    // Function called by the export command
+    function exportGrid() {
+        var grid = $("#grid").data("kendoGrid"); // 取得Excel表格實例
+        grid.saveAsExcel(); // 匯出資料為Excel
+    }
+    // 調整網格高度
+    function setGrid(e) {
+        setTimeout(function () {
+            var currHeight = getHeight(document.getElementById('FilterCondition').parentElement);
+            $("#grid").data("kendoGrid").setOptions({ height: 740 - currHeight });
+        }, 500);
+    }
+    function getHeight(element) {
+        // 先嘗試獲取元素自身的高度
+        var height = element.offsetHeight;
+
+        // 如果元素自身高度為0，則繼續向上尋找父元素的高度
+        if (height === 0) {
+            var parent = element.parentElement;
+            while (parent && parent.offsetHeight === 0) {
+                parent = parent.parentElement;
+            }
+            if (parent) {
+                height = parent.offsetHeight;
+            }
+        }
+
+        return height;
+    }
+    function ColADisplay(data) {
+        var item = ddlGridOperantIdData.data().find(x => x.ITEMVALUE == data.OperantId) ? ddlGridOperantIdData.data().find(x => x.ITEMVALUE == data.OperantId).ITEMNAME : "";
+        return item;
+    }
+    // Function called by the delete command
+    function deleteItem(e) {
+        e.preventDefault();
+        var dataItem = this.dataItem($(e.currentTarget).closest("tr"));
+        swal({
+            //title: "Are you sure?",
+            text: "【將會「一併」移除關聯事件群組是否刪除?】",
+            icon: "warning",
+            buttons: true,
+            dangerMode: true,
+        })
+        .then((willDelete) => {
+            if (willDelete) {
+                remoteDataSource.remove(dataItem); // Remove from the dataSource
+                remoteDataSource.sync(); // Synchronize the dataSource
+            }
+        });
+    }
+</script>

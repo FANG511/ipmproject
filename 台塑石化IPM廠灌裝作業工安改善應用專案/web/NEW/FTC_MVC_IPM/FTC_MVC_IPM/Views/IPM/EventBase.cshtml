@@ -1,0 +1,539 @@
+﻿
+@{
+    ViewBag.Title = "EventBase";
+    Layout = "~/Views/Shared/_LayoutForMESNoMenu.cshtml";
+}
+
+
+
+<style>
+    div.k-calendar-view a.k-link {
+        font-size: 14px;
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        font-family: "標楷體", sans-serif;
+        font-weight: bold;
+    }
+
+    .box {
+        margin: 0px 10px;
+    }
+
+    .tall {
+        height: 1000px;
+    }
+
+    .k-chart {
+        width: 400px;
+        height: 400px;
+        float: left;
+    }
+
+    .k-grid th.k-header,
+    .k-grid-content,
+    .k-grid-footer {
+        text-align: center;
+    }
+
+    #grid > table {
+        table-layout: fixed;
+    }
+
+    .k-widget.k-multiselect {
+        width: 200px;
+        vertical-align: middle;
+        display: inline-block;
+    }
+
+    .k-link,
+    .btn {
+        font-family: "標楷體", sans-serif;
+        font-weight: bold;
+    }
+
+    .k-link {
+        font-size: 16px;
+    }
+
+    .btn {
+        font-size: 14px;
+    }
+
+    .form-group {
+        margin-bottom: 5px;
+    }
+
+    .my-div {
+        text-decoration: none;
+    }
+
+        .my-div:hover {
+            text-decoration: underline;
+        }
+</style>
+@*配合網格設置使表單元件與其對應之 label 元素做水平排列*@
+
+<div class="form-horizontal">
+    <div class="form-group">
+        @*按鈕區*@
+        <div class="col-sm-12">
+            <div class="form-row">
+                <button class="btn btn_primary" id="readGrid" onclick="readGrid()">
+                    @*搜索圖標*@
+                    <i class="fa fa-search"></i>
+                    <span data-i18n="EventStatus.Query">查詢</span>
+                </button>
+
+                <div class="box box-warning box-solid" style="border-color:black;">
+                    <div class="box-header with-border" id="FilterCondition">
+                        <span data-i18n="EventStatus.divInspType" class="box-title">篩選條件</span>
+                        <div class="box-tools pull-right">
+                            @*Bootstrap摺疊*@
+                            <button type="button" class="btn btn-box-tool" data-widget="collapse" onclick="setGrid(this)">
+                                <i class="fa fa-minus"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="box-body" style="border-color:black; border-width:2px;">
+
+                        <div class="col-2">
+                            <label for="txtKeyWord" style="float:left; font-size:14px; font-weight:bold;">
+                                <span data-i18n="EventStatus.ItemName_Search">關鍵字查詢</span>：
+                                <input type="text" class="k-textbox" id="txtKeyWord" onkeypress="triggerSearch(event)" />&emsp;
+                            </label>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div class="form-group">
+        <div class="col-sm-12">
+            <div id="grid"></div>
+        </div>
+    </div>
+</div>
+@*<form id="yourFormId" data-role="validator">
+    <div>
+        <label for="EventReason">異常原因：</label>
+        <input type="text" name="EventReason" required />
+    </div>
+    <div>
+        <label for="Critical">嚴重度：</label>
+        <input type="text" name="Critical" required />
+    </div>
+    <button type="submit">提交</button>
+</form>*@
+<script>
+    const sPageName = "EventBase";
+    var dataSource;
+    var crudServiceBaseUrl = "../api/IPMCommApi";
+    var grid;
+    var remoteDataSource;
+    var oDataModels_Edit = {};
+    var col = [];
+    var oi18nLanguAuto;
+
+    $(document).ready(function () {
+
+        QueryString.Initial();
+        InitialData(); // 確保資料來源首先被配置
+        InitialGrid(); // 在資料來源配置後初始化網格
+        readGrid();
+
+        
+    });
+
+
+
+    function InitialDropDownList() {
+        ddlItemName = $("#ddlItemName").kendoDropDownList({
+            dataSource: ddlItemName_Data(),
+            dataTextField: "ITEMNAME",
+            dataValueField: "ITEMVALUE",
+            optionLabel: "---請選擇機台編號---",
+            valueTemplate: ({ ITEMNAME }) => `<span style="color: red">${ITEMNAME}</span>`,
+            change: readGrid
+        });
+        ddlItemValue = $("#ddlItemValue").kendoDropDownList({
+            dataSource: ddlItemValue_Data(),
+            dataTextField: "ITEMNAME",
+            dataValueField: "ITEMVALUE",
+            optionLabel: "---請選擇嚴重度---",
+            valueTemplate: ({ ITEMNAME }) => `<span style="color: red">${ITEMNAME}</span>`,
+            change: readGrid
+        });
+
+
+    }
+
+    function ItemNameEditor(container, options) {
+        $('<input required name="' + options.field + '"/>')
+            .appendTo(container)
+            .kendoDropDownList({
+                dataSource: ddlItemName_Data(),
+                dataTextField: "ITEMNAME",
+                dataValueField: "ITEMVALUE",
+                optionLabel: "---請選擇異常原因---"
+            });
+    }
+
+    function ItemValueEditor(container, options) {
+        $('<input required name="' + options.field + '"/>')
+            .appendTo(container)
+            .kendoDropDownList({
+                dataSource: ddlItemValue_Data(),
+                dataTextField: "ITEMNAME",
+                dataValueField: "ITEMVALUE",
+                optionLabel: "---請選擇嚴重度---"
+            });
+    }
+
+
+
+    function InitialGrid() {
+        grid = $("#grid").kendoGrid({
+            dataSource: remoteDataSource,
+            resizable: true,
+            pageable: {
+                //Clicking the refresh button will refresh the grid
+                refresh: true,
+                //顯示有分頁量，多出分頁量顯示....
+                buttonCount: 5
+            },
+            sortable: true, //排序column
+            filterable: true,
+            height: 500,
+            editable: {
+                mode: "popup",
+
+            },
+            scrollable: {
+                virtual: true
+            },
+
+            toolbar: ["create"],
+
+
+            columns: [
+                {
+                    command: [
+                        {
+                            name: "edit",
+                            template: "<a class='crud crud_edit k-grid-edit'><i class='fa fa-pencil'></i></a>&nbsp",
+                            text: { cancel: i18n.t("ButtonCommon.Cancel"), update: i18n.t("ButtonCommon.Save") }
+                        },
+                        {
+                            name: "destroy", template: "<a class='crud crud_delete k-grid-delete'><i class='fa fa-trash'></i></a>&nbsp"
+                        }
+                    ], title: i18n.t(sPageName + ".command"), width: "100px", headerAttributes: { style: "text-align: center" }
+                },
+                /* { field: "EventBaseSysId", title: i18n.t(sPageName + ".EventBaseSysId"), width: "80px", filterable: false,  hidden: true },*/
+                { field: "EventBaseName", title: i18n.t(sPageName + ".EventBaseName"), width: "80px", filterable: false },
+                { field: "EventBaseDescribe", title: i18n.t(sPageName + ".EventBaseDescribe"), width: "80px", filterable: false },
+                { field: "EventReason", title: i18n.t(sPageName + ".EventReason"), width: "80px", filterable: false, editor: ItemNameEditor },
+                { field: "Critical", title: i18n.t(sPageName + ".Critical"), width: "80px", filterable: false, editor: ItemValueEditor },
+
+                {
+                    field: "NotifyContent", title: i18n.t(sPageName + ".NotifyContent"), width: "80px", filterable: false, editor: function (container, options) {
+                        $('<textarea name="' + options.field + '" class="k-textbox" style="width:100%;height:100px;"></textarea>')
+                            .appendTo(container); }
+                },
+                { field: "ModifyDate", title: i18n.t(sPageName + ".ModifyDate"), width: "80px", filterable: false, format: "{0: yyyy/MM/dd HH:mm:ss}"},
+                { field: "MODIFYUSER", values: UserData, title: i18n.t(sPageName + ".ModifyUser"), width: "80px", filterable: false },
+
+            ],
+            save: function (e) {
+                var item = e.model;
+                if (!item.EventBaseName || !item.EventBaseDescribe || !item.EventReason || !item.Critical || !item.NotifyContent) {
+                    e.preventDefault(); // 阻止保存
+                    alert("事件基礎名稱、事件基礎描述、事件異常原因、嚴重度、通知內容 是必填的。"); // 顯示錯誤訊息
+                    return;
+                }
+
+
+                // 檢查 EventBaseName 是否重複
+                var isDuplicate = remoteDataSource.data().some(
+                    (dataItem) => dataItem.EventBaseName === item.EventBaseName && dataItem.uid !== item.uid
+                );
+
+                if (isDuplicate) {
+                    e.preventDefault(); // 阻止保存
+                    alert("事件基礎名稱已存在，請選擇不同的事件基礎名稱。"); // 顯示提示
+                    return;
+                }
+
+                if (!item.EventBaseName || !item.EventBaseDescribe || !item.EventReason || !item.Critical || !item.NotifyContent) {
+                    e.preventDefault(); // 阻止保存
+                    alert("請填寫事件基礎名稱、事件基礎描述、事件異常原因、嚴重度、通知內容。");
+                    return;
+                }
+            },
+            edit: function (e) {
+                var container = e.container;
+                var model = e.model;
+
+                //確保在編輯彈出視窗中顯示 MODIFYUSER 字段
+                container.find("label[for='MODIFYUSER']").show();
+                container.find("input[name='MODIFYUSER']").parent().show();
+
+                // 如果是新建操作，設定目前用戶
+                if (model.isNew()) {
+                    container.find("input[name='MODIFYUSER']").val(MODIFYUSER);
+                }
+            }
+
+
+        }).data("kendoGrid");
+    }
+    function InitialData() {
+        remoteDataSource = new kendo.data.DataSource({
+            batch: true,
+            transport: {//下拉選單資料讀取
+
+                read: {
+                    url: crudServiceBaseUrl + "/GetEventBase",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                create: {
+                    url: crudServiceBaseUrl + "/CreateEventBase",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                update: {
+                    url: crudServiceBaseUrl + "/UpdateEventBase",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                destroy: {
+                    url: crudServiceBaseUrl + "/DeleteEventBase",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                   /* debugger*/
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = "FTC";
+                    oDataModels_Edit["FactoryID"] = "IPM";
+
+                    if (operation === 'read') {
+                        oDataModels_Edit["keyword"] = $("#txtKeyWord").val();
+
+
+                    }
+
+                    if (operation !== "read" && options.models) {
+                        oDataModels_Edit["EventBaseSysId"] = options.models[0].EventBaseSysId;
+                        oDataModels_Edit["EventBaseName"] = options.models[0].EventBaseName;
+                        oDataModels_Edit["EventBaseDescribe"] = options.models[0].EventBaseDescribe;
+                        oDataModels_Edit["EventReason"] = options.models[0].EventReason;
+                        oDataModels_Edit["Critical"] = options.models[0].Critical;
+                        oDataModels_Edit["NotifyContent"] = options.models[0].NotifyContent;
+                        oDataModels_Edit["CreateUser"] = options.models[0].CreateUser;
+                        oDataModels_Edit["CreateDate"] = options.models[0].CreateDate;
+
+                        oDataModels_Edit["ModifyDate"] = options.models[0].ModifyDate;
+                        oDataModels_Edit["ModifyUser"] = options.models[0].ModifyUser;
+
+                    }
+                    return oDataModels_Edit;
+                }
+            },
+            //每分頁幾筆資料
+            pageSize: 6,
+            batch: true,
+
+            schema: {
+               /* 目的：處理和驗證從伺服器傳回的資料。*/
+                parse: function (data) {
+                    /*如果資料長度為1且第一個元素的 ReturnCode 不為0，則傳回空字串，表示資料有誤。*/
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            return [];
+                        }
+                    }
+                    else {
+                       /* 如果資料長度大於1且第二個元素的 ReturnCode 不為0，也傳回空字串，表示資料有誤。*/
+                        if (data[1].ReturnCode != 0) {
+
+                            return [];
+                        } else {
+                          /*  否則，傳回資料的第一個部分，表示資料有效。*/
+                            return data[0];
+                        }
+                    }
+                },
+                model: {
+                    id: "EventBaseSysId",
+                    fields: {
+                        EventBaseSysId: { type: "string", editable: false },
+                        EventBaseName: { type: "string" },
+                        EventBaseDescribe: { type: "string" },
+                        EventReason: { type: "string" },
+                        Critical: { type: "number", validation: { min: 0, max: 9.99, decimals: 2 } },
+                        NotifyContent: { type: "string" },
+                        CreateUser: { type: "string", editable: false },
+                        CreateDate: { type: "date", editable: false },
+                        ModifyDate: { type: "date", editable: false },
+                        MODIFYUSER: { type: "string", editable: false },
+                        /*Keyword: { type: "string" }  // 確保模型包含Keyword屬性*/
+                    }
+                },
+
+            },
+            requestEnd: function (e) {
+                //debugger;
+                var response = e.response;
+                var type = e.type;
+
+                if (type != 'read') {
+
+                    $("#grid").data("kendoGrid").dataSource.read();
+                }
+
+            }
+        });
+    }
+
+
+
+
+
+    function ddlItemName_Data() {
+        var getItemName = new kendo.data.DataSource({
+            transport: {//下拉選單資料讀取
+                read: {
+                    url: crudServiceBaseUrl + "/GetEventReasonDrop",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    /* debugger*/
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = "FTC";
+                    oDataModels_Edit["FactoryID"] = "IPM";
+                    return oDataModels_Edit;
+                }
+            },
+            schema: {
+                parse: function (data) {
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            //FtcAlert(data[0].ReturnMessage);
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+                            //FtcAlert(data[1].ReturnMessage);
+                            return [];
+                        } else {
+                            let dataArray = new Array();
+                            let obj;
+                            console.log(data[0])
+                            for (let key in data[0]) {
+                                obj = { ITEMNAME: data[0][key].ItemName, ITEMVALUE: data[0][key].ItemName };
+                                console.log(obj);
+                                dataArray.push(obj);
+                            }
+                            return dataArray;
+                        }
+                    }
+                }
+            }
+        });
+        return getItemName;
+    };
+
+
+    function ddlItemValue_Data() {
+        var getItemValue = new kendo.data.DataSource({
+            transport: {//下拉選單資料讀取
+                read: {
+                    url: crudServiceBaseUrl + "/GetEventCriticalDrop",
+                    async: false,
+                    dataType: "json",
+                    type: "Post"
+                },
+                parameterMap: function (options, operation) {//狀態判斷，非讀取則指定模型之狀態
+                    /* debugger*/
+                    oDataModels_Edit["MODIFYUSER"] = MODIFYUSER;
+                    oDataModels_Edit["CompanyID"] = "FTC";
+                    oDataModels_Edit["FactoryID"] = "IPM";
+                    return oDataModels_Edit;
+                }
+            },
+            schema: {
+                parse: function (data) {
+                    if (data.length == 1) {
+                        if (data[0].ReturnCode != 0) {
+                            //FtcAlert(data[0].ReturnMessage);
+                            return [];
+                        }
+                    }
+                    else {
+                        if (data[1].ReturnCode != 0) {
+                            //FtcAlert(data[1].ReturnMessage);
+                            return [];
+                        } else {
+                            let dataArray = new Array();
+                            let obj;
+                            console.log(data[0])
+                            for (let key in data[0]) {
+                                obj = { ITEMNAME: data[0][key].ItemValue, ITEMVALUE: data[0][key].ItemValue };
+                                console.log(obj);
+                                dataArray.push(obj);
+                            }
+                            return dataArray;
+                        }
+                    }
+                }
+            }
+        });
+        return getItemValue;
+    };
+
+
+
+
+
+
+    @* --------------------------------------------------------------邏輯區 -------------------------------------------------------------- *@
+
+
+
+    // Function to trigger the search when Enter key is pressed
+        function triggerSearch(event) {
+            if (event.key === "Enter") {
+                readGrid(); // Call the readGrid function to refresh the grid data
+            }
+        }
+
+    function readGrid() {
+        $("#grid").data("kendoGrid").dataSource.read(); // 重新整理數據
+        //$("#grid").data("kendoGrid").dataSource.read({
+        //    keyword: $("#txtKeyWord").val()
+        //});
+        $("#grid").data("kendoGrid").dataSource.page(1); // 定位到第一頁
+    }
+
+    function gridEdit() {
+        grid.gridEdit();
+    }
+
+
+
+
+</script>
